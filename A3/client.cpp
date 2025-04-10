@@ -1,47 +1,39 @@
 #include <iostream>
+#include <cstring>
+#include <cstdlib>
 #include <sys/socket.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <cstring>
 
-// Pseudo-header used for TCP checksum calculation
-struct pseudo_header {
-    u_int32_t source_addr;
-    u_int32_t dest_addr;
-    u_int8_t placeholder;
-    u_int8_t protocol;
-    u_int16_t tcp_length;
-};
+#include <chrono>
+#include <thread>
 
-// Compute checksum (IP or TCP)
-unsigned short compute_checksum(unsigned short *addr, unsigned int len) {
-    unsigned long sum = 0;
-    while (len > 1) {
-        sum += *addr++;
-        len -= 2;
-    }
-    if (len == 1) {
-        sum += *(unsigned char *)addr;
-    }
-    sum = (sum >> 16) + (sum & 0xffff);
-    sum += (sum >> 16);
-    return (unsigned short)(~sum);
+void print_tcp_flags(struct tcphdr *tcp) {
+    std::cout << "[+] TCP Flags: "
+              << " SYN: " << tcp->syn
+              << " ACK: " << tcp->ack
+              << " FIN: " << tcp->fin
+              << " RST: " << tcp->rst
+              << " PSH: " << tcp->psh
+              << " SEQ: " << ntohl(tcp->seq)
+              << " DST: " << ntohs(tcp->dest)
+              << " SRC:  " << ntohs(tcp->source)  << std::endl;
 }
+
 
 int main() {
     // Create raw socket
-    int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+    int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (sockfd < 0) {
         perror("Socket creation failed");
         return 1;
     }
 
-    // Enable IP_HDRINCL
+    // Enable IP header inclusion
     int one = 1;
-    const int *val = &one;
-    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, val, sizeof(one)) < 0) {
+    if (setsockopt(sockfd, IPPROTO_IP, IP_HDRINCL, &one, sizeof(one)) < 0) {
         perror("setsockopt() failed");
         return 1;
     }
@@ -50,55 +42,45 @@ int main() {
     struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(12345);  // Server's hardcoded port
-    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr); // Server's hardcoded IP
+    server_addr.sin_port = htons(12345);
+    server_addr.sin_addr.s_addr= inet_addr("127.0.0.1");  
 
-    // Local client config
-    const char *client_ip = "127.0.0.1";
-    unsigned short client_port = 54321; // Arbitrary client port
+    //local
+    struct sockaddr_in local_addr;
+    memset(&local_addr, 0, sizeof(local_addr));
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(6969); // Use the client port
+    local_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // Local IP
 
     // Build SYN packet
-    char packet[sizeof(struct ip) + sizeof(struct tcphdr)];
+    char packet[sizeof(struct iphdr) + sizeof(struct tcphdr)];
     memset(packet, 0, sizeof(packet));
 
-    struct ip *ip = (struct ip *)packet;
-    struct tcphdr *tcp = (struct tcphdr *)(packet + sizeof(struct ip));
+    struct iphdr *ip = (struct iphdr *)packet;
+    struct tcphdr *tcp = (struct tcphdr *)(packet + sizeof(struct iphdr));
 
     // IP header
-    ip->ip_v = 4;
-    ip->ip_hl = 5;
-    ip->ip_tos = 0;
-    ip->ip_len = htons(sizeof(packet));
-    ip->ip_id = htons(54321);
-    ip->ip_off = 0;
-    ip->ip_ttl = 64;
-    ip->ip_p = IPPROTO_TCP;
-    inet_pton(AF_INET, client_ip, &ip->ip_src.s_addr);
-    ip->ip_dst.s_addr = server_addr.sin_addr.s_addr;
-    ip->ip_sum = compute_checksum((unsigned short *)ip, sizeof(struct ip));
-
+    ip->version = 4;
+    ip->ihl = 5;
+    ip->tos = 0;
+    ip->tot_len = htons(sizeof(packet));
+    ip->id = htons(54321);
+    ip->frag_off = 0;
+    ip->ttl = 64;
+    ip->protocol = IPPROTO_TCP;
+    ip->saddr= local_addr.sin_addr.s_addr;
+    ip->daddr = server_addr.sin_addr.s_addr;
+    
     // TCP header (SYN)
-    tcp->th_sport = htons(client_port);
-    tcp->th_dport = htons(12345);
-    tcp->th_seq = htonl(1234);
-    tcp->th_ack = 0;
-    tcp->th_off = 5;
-    tcp->th_flags = TH_SYN;
-    tcp->th_win = htons(64240);
-    tcp->th_urp = 0;
-
-    // TCP checksum
-    pseudo_header psh;
-    psh.source_addr = ip->ip_src.s_addr;
-    psh.dest_addr = ip->ip_dst.s_addr;
-    psh.placeholder = 0;
-    psh.protocol = IPPROTO_TCP;
-    psh.tcp_length = htons(sizeof(struct tcphdr));
-
-    char pseudo_packet[sizeof(psh) + sizeof(struct tcphdr)];
-    memcpy(pseudo_packet, &psh, sizeof(psh));
-    memcpy(pseudo_packet + sizeof(psh), tcp, sizeof(struct tcphdr));
-    tcp->th_sum = compute_checksum((unsigned short *)pseudo_packet, sizeof(pseudo_packet));
+    tcp->source = htons(6969);
+    tcp->dest = htons(12345);
+    tcp->seq = htonl(200);
+    tcp->ack = 0;
+    tcp->doff = 5;
+    tcp->syn=1;
+    tcp->window = htons(8192);
+    tcp->check = 0;
+    
 
     // Send SYN
     if (sendto(sockfd, packet, sizeof(packet), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
@@ -107,61 +89,68 @@ int main() {
         return 1;
     }
 
-    std::cout << "[Client] SYN sent to 127.0.0.1:12345\n";
+    std::cout << "[Client] SYN sent to 127.0.0.1:12345 \n";
 
     // Receive SYN-ACK
-    char recv_packet[1024];
+    
+
+    //std::this_thread::sleep_for(std::chrono::seconds(3));
+while(true){
+    char recv_packet[65536];
     struct sockaddr_in from_addr;
     socklen_t from_len = sizeof(from_addr);
-
-    ssize_t recv_size = recvfrom(sockfd, recv_packet, sizeof(recv_packet), 0, (struct sockaddr *)&from_addr, &from_len);
+    int recv_size = recvfrom(sockfd, recv_packet, sizeof(recv_packet), 0, (struct sockaddr *)&from_addr, &from_len);
     if (recv_size < 0) {
+        //std::cout<<"boom error HERE at 132 line"<<std::endl;
         perror("Recvfrom failed");
         close(sockfd);
         return 1;
     }
 
-    struct ip *recv_ip = (struct ip *)recv_packet;
-    struct tcphdr *recv_tcp = (struct tcphdr *)(recv_packet + (recv_ip->ip_hl * 4));
+    struct iphdr *recv_ip = (struct iphdr *)recv_packet;
+    struct tcphdr *recv_tcp = (struct tcphdr *)(recv_packet + (recv_ip->ihl * 4));
+    
+    
+    // only reply from port 12345 should be 
+    if( ntohs(recv_tcp->source) != 12345){    
+        continue;
+    }
 
-    if ((recv_tcp->th_flags & TH_SYN) && (recv_tcp->th_flags & TH_ACK)) {
-        std::cout << "[Client] SYN-ACK received.\n";
+    print_tcp_flags(recv_tcp);
 
-        uint32_t server_seq = ntohl(recv_tcp->th_seq);
-        uint32_t ack_num = ntohl(recv_tcp->th_ack);
+    if ((recv_tcp->syn == 1 ) && (recv_tcp->ack == 1 ) && (ntohl(recv_tcp->ack_seq) == 201)) {
+        std::cout << "[Client] SYN-ACK received.\n";       
 
         // Build ACK packet
-        char ack_packet[sizeof(struct ip) + sizeof(struct tcphdr)];
+        char ack_packet[sizeof(struct iphdr) + sizeof(struct tcphdr)];
         memset(ack_packet, 0, sizeof(ack_packet));
 
-        struct ip *ack_ip = (struct ip *)ack_packet;
+        struct iphdr *ack_ip = (struct iphdr *)ack_packet;
         struct tcphdr *ack_tcp = (struct tcphdr *)(ack_packet + sizeof(struct ip));
 
         memcpy(ack_ip, ip, sizeof(struct ip));
-        ack_ip->ip_id = htons(54322);
-        ack_ip->ip_sum = 0;
-        ack_ip->ip_sum = compute_checksum((unsigned short *)ack_ip, sizeof(struct ip));
-
-        ack_tcp->th_sport = htons(client_port);
-        ack_tcp->th_dport = htons(12345);
-        ack_tcp->th_seq = htonl(ack_num);
-        ack_tcp->th_ack = htonl(server_seq + 1);
-        ack_tcp->th_off = 5;
-        ack_tcp->th_flags = TH_ACK;
-        ack_tcp->th_win = htons(64240);
-        ack_tcp->th_urp = 0;
-
-        pseudo_header ack_psh;
-        ack_psh.source_addr = ack_ip->ip_src.s_addr;
-        ack_psh.dest_addr = ack_ip->ip_dst.s_addr;
-        ack_psh.placeholder = 0;
-        ack_psh.protocol = IPPROTO_TCP;
-        ack_psh.tcp_length = htons(sizeof(struct tcphdr));
-
-        char ack_pseudo[sizeof(ack_psh) + sizeof(struct tcphdr)];
-        memcpy(ack_pseudo, &ack_psh, sizeof(ack_psh));
-        memcpy(ack_pseudo + sizeof(ack_psh), ack_tcp, sizeof(struct tcphdr));
-        ack_tcp->th_sum = compute_checksum((unsigned short *)ack_pseudo, sizeof(ack_pseudo));
+        //IP
+        ack_ip->ihl=5;
+        ack_ip->version = 4;
+        ack_ip-> tos=0 ;
+        ack_ip->tot_len =  htons(sizeof(ack_packet));
+        ack_ip->frag_off = 0;
+        ack_ip-> ttl= 64;
+        ack_ip-> protocol = IPPROTO_TCP;
+        ack_ip->id = htons(54321);
+        ack_ip->saddr= local_addr.sin_addr.s_addr;
+        ack_ip->daddr = server_addr.sin_addr.s_addr;
+    
+        //TCP
+        ack_tcp->source = htons(6969);
+        ack_tcp->dest = recv_tcp->source;
+        ack_tcp->seq = htonl(ntohl(recv_tcp->seq)+200);
+        ack_tcp->ack_seq = htonl(ntohl(recv_tcp->seq) + 1 );
+        ack_tcp->ack = 1;
+        ack_tcp->syn = 0;
+        ack_tcp->doff = 5;
+        ack_tcp->window = htons(8192);
+        ack_tcp->check = 0;
 
         if (sendto(sockfd, ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
             perror("Send to ACK failed");
@@ -170,9 +159,15 @@ int main() {
         }
 
         std::cout << "[Client] ACK sent. Handshake complete.\n";
-    } else {
+        break;
+    } 
+    
+    else {
         std::cerr << "[Client] Unexpected packet received.\n";
+        break;
     }
+
+}
 
     close(sockfd);
     return 0;

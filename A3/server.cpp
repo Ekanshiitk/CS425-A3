@@ -11,42 +11,43 @@
 
 void print_tcp_flags(struct tcphdr *tcp) {
     std::cout << "[+] TCP Flags: "
-              << " SYN: " << ((tcp->th_flags & TH_SYN) ? 1 : 0)
-              << " ACK: " << ((tcp->th_flags & TH_ACK) ? 1 : 0)
-              << " FIN: " << ((tcp->th_flags & TH_FIN) ? 1 : 0)
-              << " RST: " << ((tcp->th_flags & TH_RST) ? 1 : 0)
-              << " PSH: " << ((tcp->th_flags & TH_PUSH) ? 1 : 0)
-              << " SEQ: " << ntohl(tcp->th_seq) << std::endl;
+              << " SYN: " << tcp->syn
+              << " ACK: " << tcp->ack
+              << " FIN: " << tcp->fin
+              << " RST: " << tcp->rst
+              << " PSH: " << tcp->psh
+              << " SEQ: " << ntohl(tcp->seq) << std::endl;
 }
 
 void send_syn_ack(int sock, struct sockaddr_in *client_addr, struct tcphdr *tcp) {
-    char packet[sizeof(struct ip) + sizeof(struct tcphdr)];
+    char packet[sizeof(struct iphdr) + sizeof(struct tcphdr)];
     memset(packet, 0, sizeof(packet));
 
-    struct ip *ip = (struct ip *)packet;
-    struct tcphdr *tcp_response = (struct tcphdr *)(packet + sizeof(struct ip));
+    struct iphdr *ip = (struct iphdr *)packet;
+    struct tcphdr *tcp_response = (struct tcphdr *)(packet + sizeof(struct iphdr));
 
     // Fill IP header
-    ip->ip_hl = 5;
-    ip->ip_v = 4;
-    ip->ip_tos = 0;
-    ip->ip_len = htons(sizeof(packet));
-    ip->ip_id = htons(54321);
-    ip->ip_off = 0;
-    ip->ip_ttl = 64;
-    ip->ip_p = IPPROTO_TCP;
-    ip->ip_src.s_addr = client_addr->sin_addr.s_addr;
-    ip->ip_dst.s_addr = inet_addr("127.0.0.1");  // Server address
+    ip->ihl = 5;
+    ip->version = 4;
+    ip->tos = 0;
+    ip->tot_len = htons(sizeof(packet));
+    ip->id = htons(54321);
+    ip->frag_off = 0;
+    ip->ttl = 64;
+    ip->protocol = IPPROTO_TCP;
+    ip->saddr = client_addr->sin_addr.s_addr;
+    ip->daddr = inet_addr("127.0.0.1");  // Server address
 
     // Fill TCP header
-    tcp_response->th_sport = tcp->th_dport;
-    tcp_response->th_dport = tcp->th_sport;
-    tcp_response->th_seq = htonl(400);
-    tcp_response->th_ack = htonl(ntohl(tcp->th_seq) + 1);
-    tcp_response->th_off = 5;
-    tcp_response->th_flags = TH_SYN | TH_ACK;
-    tcp_response->th_win = htons(8192);
-    tcp_response->th_sum = 0;  // Kernel will compute the checksum
+    tcp_response->source = tcp->dest;
+    tcp_response->dest = tcp->source;
+    tcp_response->seq = htonl(400);
+    tcp_response->ack_seq = htonl(ntohl(tcp->seq) + 1);
+    tcp_response->doff = 5;
+    tcp_response->syn = 1;
+    tcp_response->ack = 1;
+    tcp_response->window = htons(8192);
+    tcp_response->check = 0;  // Kernel will compute the checksum
 
     // Send packet
     if (sendto(sock, packet, sizeof(packet), 0, (struct sockaddr *)client_addr, sizeof(*client_addr)) < 0) {
@@ -81,20 +82,20 @@ void receive_syn() {
             continue;
         }
 
-        struct ip *ip = (struct ip *)buffer;
-        struct tcphdr *tcp = (struct tcphdr *)(buffer + (ip->ip_hl * 4));
+        struct iphdr *ip = (struct iphdr *)buffer;
+        struct tcphdr *tcp = (struct tcphdr *)(buffer + (ip->ihl * 4));
 
         // Only process packets for the correct destination port
-        if (ntohs(tcp->th_dport) != SERVER_PORT) continue;
+        if (ntohs(tcp->dest) != SERVER_PORT) continue;
 
         print_tcp_flags(tcp);
 
-        if ((tcp->th_flags & TH_SYN) && !(tcp->th_flags & TH_ACK) && ntohl(tcp->th_seq) == 200) {
+        if (tcp->syn == 1 && tcp->ack == 0 && ntohl(tcp->seq) == 200) {
             std::cout << "[+] Received SYN from " << inet_ntoa(source_addr.sin_addr) << std::endl;
             send_syn_ack(sock, &source_addr, tcp);
         }
 
-        if ((tcp->th_flags & TH_ACK) && !(tcp->th_flags & TH_SYN) && ntohl(tcp->th_seq) == 600) {
+        if (tcp->ack == 1 && tcp->syn == 0 && ntohl(tcp->seq) == 600) {
             std::cout << "[+] Received ACK, handshake complete." << std::endl;
             break;
         }
