@@ -28,13 +28,14 @@ git clone https://github.com/privacy-iitk/cs425-2025.git
 cd cs425-2025/Homeworks/A3
 ```
 
-### 2. Add/Replace Files
-Place your modified `client.cpp` in the same directory as the provided `server.cpp`.
-
-### 3. Compile the Programs
+### 2. Compile the Programs
 ```bash
 sudo g++ server.cpp -o server
 sudo g++ client.cpp -o client
+```
+##OR
+```bash
+make
 ```
 
 > Using `sudo` to compile and run since raw sockets require elevated permissions.
