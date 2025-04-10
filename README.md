@@ -64,7 +64,6 @@ sudo ./client
 ### Raw Socket Usage
 - Manual construction of IP and TCP headers
 - Manual setting of flags (SYN, ACK)
-- Calculation of checksums
 - Parsing of packet data at the byte level
 
 ---
