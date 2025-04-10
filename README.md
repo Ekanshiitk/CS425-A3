@@ -33,7 +33,7 @@ cd cs425-2025/Homeworks/A3
 sudo g++ server.cpp -o server
 sudo g++ client.cpp -o client
 ```
-##OR
+## OR
 ```bash
 make
 ```
