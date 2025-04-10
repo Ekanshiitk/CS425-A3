@@ -17,7 +17,6 @@ This assignment implements the **client-side** of a simplified **TCP three-way h
 - A Linux environment (raw sockets require root access and Linux-style headers)
 - C++ compiler (e.g., `g++`)
 - Root privileges to run the programs
-- Git (to clone the official repo)
 
 ---
 
@@ -58,7 +57,7 @@ sudo ./client
 
 ## Implementation Details
 
-### 🔧 Three-Way Handshake Process
+### Three-Way Handshake Process
 1. **SYN**: The client sends a SYN packet to initiate the connection.
 2. **SYN-ACK**: The server responds with a SYN-ACK packet.
 3. **ACK**: The client sends the final ACK to complete the handshake.
@@ -66,7 +65,7 @@ sudo ./client
 - The server handles only one connection at a time.
 - The client and server exchange fixed values for sequence numbers, which can be verified in `server.cpp`.
 
-### 🧠 Raw Socket Usage
+### Raw Socket Usage
 - Manual construction of IP and TCP headers
 - Manual setting of flags (SYN, ACK)
 - Calculation of checksums
@@ -90,43 +89,8 @@ sudo ./client
 ```
 A3/
 │── client.cpp       # C++ code implementing TCP client using raw sockets
-│── server.cpp       # Provided server code (do not modify)
-│── README.md        # Documentation (this file)
+│── server.cpp       # Provided server code 
+│── README.md        # Documentation
 ```
 
 ---
-
-## Grading Criteria
-
-| Component         | Weight |
-|------------------|--------|
-| Correctness      | 60%    |
-| Code Comments    | 15%    |
-| Documentation    | 25%    |
-
----
-
-## Submission Instructions
-
-1. Zip the following files:
-   - `client.cpp`
-   - `README.md`
-
-2. Use the naming convention:
-   ```
-   A3<RollNo1><RollNo2><RollNo3>.zip
-   ```
-   *Example:* `A3220390220834.zip`
-
-3. Uplo
----
-
-## Notes
-
-- All clarifications should be sought on **Piazza**.
-- Ensure that the server is running before starting the client.
-- Do not use advanced TCP libraries; stick to **raw sockets** and **manual packet crafting** as required.
-
----
-
-Happy Packet Crafting! 📡
