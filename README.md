@@ -22,18 +22,13 @@ This assignment implements the **client-side** of a simplified **TCP three-way h
 
 ## Setup Instructions
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/privacy-iitk/cs425-2025.git
-cd cs425-2025/Homeworks/A3
-```
 
-### 2. Compile the Programs
+### 1. Compile the Programs
 ```bash
 sudo g++ server.cpp -o server
 sudo g++ client.cpp -o client
 ```
-## OR
+### OR
 ```bash
 make
 ```
